@@ -1,0 +1,3 @@
+ssh:
+  host: 'localhost'
+  username: 'ming'

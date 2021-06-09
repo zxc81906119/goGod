@@ -10,15 +10,23 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
+	"untitled/main/util"
 )
 
 const (
-	WORKSPACE = "WORKSPACE"
+	WORKSPACE     = "WORKSPACE"
+	MAIN_YML_PATH = "MAIN_YML_PATH"
 )
 
 func isDir(path string) bool {
 	fileInfo, error := os.Stat(path)
 	return error == nil && fileInfo.IsDir()
+}
+
+func isFile(path string) bool {
+	fileInfo, error := os.Stat(path)
+	return error == nil && !fileInfo.IsDir()
 }
 
 func readYmlToMap(ymlPath string) (map[string]interface{}, error) {
@@ -42,15 +50,10 @@ func readYmlToMap(ymlPath string) (map[string]interface{}, error) {
 }
 
 func arrayNoEmpty(array []string) []string {
-	if array == nil {
-		return []string{}
-	}
-
 	if len(array) == 0 {
 		return array
 	}
-
-	newArray := []string{}
+	var newArray []string
 	for _, element := range array {
 		if element != "" {
 			newArray = append(newArray, element)
@@ -59,78 +62,49 @@ func arrayNoEmpty(array []string) []string {
 	return newArray
 }
 
+func getNextObj(lastObj interface{}, element string) interface{} {
+	if lastObj != nil {
+		reflectValue := reflect.ValueOf(lastObj)
+		if reflectValue.Kind() == reflect.Interface || reflectValue.Kind() == reflect.Ptr {
+			reflectValue = reflectValue.Elem()
+		}
+		switch reflectValue.Kind() {
+		case reflect.Map:
+			reflectType := reflectValue.Type()
+			elementValue := reflect.ValueOf(element)
+			if reflectType.Key().AssignableTo(elementValue.Type()) {
+				mapValue := reflectValue.MapIndex(elementValue)
+				if mapValue.IsValid() {
+					return mapValue.Interface()
+				}
+			}
+			break
+		case reflect.Slice:
+			elementIndex, error := strconv.Atoi(element)
+			if error == nil && reflectValue.Len() > elementIndex {
+				return reflectValue.Index(elementIndex).Interface()
+			}
+			break
+		}
+	}
+	return nil
+}
+
 func getMapValueByPath(mapPath string, someMap interface{}) interface{} {
 	if someMap != nil {
 		compile := regexp.MustCompile(`[\.\[\]]`)
 		split := arrayNoEmpty(compile.Split(mapPath, -1))
-		if split != nil && len(split) != 0 {
-			eachObj := someMap
+		if len(split) != 0 {
+			lastObj := someMap
 			for _, element := range split {
-				typeName := reflect.TypeOf(eachObj).String()
-				if typeName == "map[string]interface {}" {
-					eachObj = eachObj.(map[string]interface{})[element]
-				} else if typeName == "[]interface {}" {
-					elementIndex, error := strconv.ParseInt(element, 10, 64)
-					if error != nil {
-						return nil
-					}
-					eachObj = eachObj.([]interface{})[elementIndex]
-				} else {
-					return nil
-				}
-
-				if eachObj == nil {
-					return nil
-				}
-
-			}
-			return eachObj
-		}
-	}
-	return someMap
-}
-
-func getProjRelativePath(ymlMap map[string]interface{}) (string, bool) {
-	result := getMapValueByPath("projRelativePath", ymlMap)
-	if result == nil {
-		fmt.Println("yml須提參數:projRelativePath")
-		return "", false
-	} else {
-		resultString, ok := result.(string)
-		if !ok {
-			fmt.Println("參數:projRelativePath 非字串")
-			return "", false
-		}
-		fmt.Println("參數:projRelativePath:", resultString)
-		return resultString, true
-	}
-}
-
-func getExcludeRegExps(ymlMap map[string]interface{}) ([]string, bool) {
-	result := getMapValueByPath("excludeRegExps", ymlMap)
-	if result == nil {
-		return nil, true
-	} else {
-		resultArray, ok := result.([]interface{})
-		if !ok {
-			fmt.Println("參數:excludeRegExps 非陣列")
-			return nil, false
-		}
-		excludeRegExps := []string{}
-		if len(resultArray) != 0 {
-			for _, element := range resultArray {
-				elementString, ok := element.(string)
-				if ok {
-					excludeRegExps = append(excludeRegExps, elementString)
-				} else {
-					fmt.Printf("陣列元素: %v 不是字串,請提供字串元素", element)
-					return nil, false
+				if lastObj = getNextObj(lastObj, element); lastObj == nil {
+					return lastObj
 				}
 			}
+			return lastObj
 		}
-		fmt.Println("參數:excludeRegExps:", excludeRegExps)
-		return excludeRegExps, true
 	}
+	return nil
 }
 
 func deleteExcludePaths(somePath string, excludeRegExps []string) bool {
@@ -148,12 +122,13 @@ func deleteExcludePaths(somePath string, excludeRegExps []string) bool {
 					}
 
 					if isMatch {
-						fmt.Printf("正規:%s,路徑:%s", regExp, path)
+						fmt.Printf("路徑:%s 正規:%s 比對相符", regExp, path)
 						fmt.Println()
 						error2 := os.RemoveAll(path)
 						if error2 != nil {
 							return error2
 						}
+						fmt.Println("刪除成功")
 						if info.IsDir() {
 							return filepath.SkipDir
 						}
@@ -174,7 +149,7 @@ func deleteExcludePaths(somePath string, excludeRegExps []string) bool {
 }
 
 func getWorkspace() (string, bool) {
-	var workspaceDir = os.Getenv(WORKSPACE)
+	workspaceDir := os.Getenv(WORKSPACE)
 	if workspaceDir == "" {
 		fmt.Println("未提供環境變數: WORKSPACE")
 		return "", false
@@ -191,10 +166,10 @@ func getWorkspace() (string, bool) {
 	return workspaceDir, true
 }
 
-func getYmlMap(someDir string) (map[string]interface{}, bool) {
+func getProjYmlMap(someDir string, ymlName string) (map[string]interface{}, bool) {
 	ymlFilePath := ""
 	filepath.Walk(someDir, func(path string, info fs.FileInfo, err error) error {
-		if err == nil && !info.IsDir() && "fortify.yml" == info.Name() {
+		if err == nil && !info.IsDir() && ymlName == info.Name() {
 			ymlFilePath = path
 			return errors.New("don't need run")
 		}
@@ -204,13 +179,31 @@ func getYmlMap(someDir string) (map[string]interface{}, bool) {
 		fmt.Println("WORKSPACE中不存在fortify.yml檔案,請放置此檔在專案的任意位置")
 		return nil, false
 	}
-	// 讀fortify.yml的內容抓出參數,可以在init的時候直接放到記憶體中
-	ymlMap, readYmlError := readYmlToMap(ymlFilePath)
+	return getYmlMapByPath(ymlFilePath)
+}
+
+func getMainYmlMap() (map[string]interface{}, bool) {
+	mainYmlPath := os.Getenv(MAIN_YML_PATH)
+	if mainYmlPath == "" {
+		fmt.Println("必須提供環境變數: MAIN_YML_PATH")
+		return nil, false
+	}
+	return getYmlMapByPath(mainYmlPath)
+
+}
+
+func getYmlMapByPath(ymlPath string) (map[string]interface{}, bool) {
+	if !isFile(ymlPath) {
+		return nil, false
+	}
+	ymlMap, readYmlError := readYmlToMap(ymlPath)
 	if readYmlError != nil {
-		fmt.Println("讀取fortify.yml發生錯誤", readYmlError)
+		fmt.Printf("讀取yml檔發生錯誤 path:%s error:%v", ymlPath, readYmlError)
+		fmt.Println()
 		return nil, false
 	}
 	return ymlMap, true
+
 }
 
 func checkPathIsSafe(path string) bool {
@@ -227,50 +220,253 @@ func getProjPath(workspace string, projRelativePath string) (string, bool) {
 		fmt.Printf("專案目錄: %s 不存在或非目錄", projPath)
 		return "", false
 	}
-	fmt.Println("projPath:", projPath)
+	fmt.Println("參數 projPath:", projPath)
 	return projPath, true
 }
 
+func combineTwoMap(firstMap interface{}, secondMap interface{}) {
+	if firstMap != nil && secondMap != nil {
+		firstMapRefValue := reflect.ValueOf(firstMap)
+		secondMapRefValue := reflect.ValueOf(secondMap)
+		if firstMapRefValue.Kind() == reflect.Interface || firstMapRefValue.Kind() == reflect.Ptr {
+			firstMapRefValue = firstMapRefValue.Elem()
+		}
+		if secondMapRefValue.Kind() == reflect.Interface || secondMapRefValue.Kind() == reflect.Ptr {
+			secondMapRefValue = secondMapRefValue.Elem()
+		}
+		if firstMapRefValue.Kind() == reflect.Map && secondMapRefValue.Kind() == reflect.Map {
+			if secondMapRefValue.Len() != 0 {
+				for _, secondMapRefValueKey := range secondMapRefValue.MapKeys() {
+					firstMapRefValueValue := firstMapRefValue.MapIndex(secondMapRefValueKey)
+					secondMapRefValueValue := secondMapRefValue.MapIndex(secondMapRefValueKey)
+					if firstMapRefValueValue.IsValid() { // 有這個key
+						if !firstMapRefValueValue.IsNil() && !secondMapRefValueValue.IsNil() {
+							if firstMapRefValueValue.Kind() == reflect.Interface || firstMapRefValueValue.Kind() == reflect.Ptr {
+								firstMapRefValueValue = firstMapRefValueValue.Elem()
+							}
+							if secondMapRefValueValue.Kind() == reflect.Interface || secondMapRefValueValue.Kind() == reflect.Ptr {
+								secondMapRefValueValue = secondMapRefValueValue.Elem()
+							}
+							if firstMapRefValueValue.Kind() == reflect.Map && secondMapRefValueValue.Kind() == reflect.Map {
+								combineTwoMap(firstMapRefValueValue.Interface(), secondMapRefValueValue.Interface())
+								continue
+							}
+						}
+					}
+					firstMapRefValue.SetMapIndex(secondMapRefValueKey, secondMapRefValueValue)
+				}
+			}
+		}
+
+	}
+}
+
+type SshDeleteOldProjDirRunner struct {
+	util.CmdModel
+	HostnameOrIp string
+	UserName     string
+	DeletePaths  []string
+	MkdirPath    string
+}
+
+func (s *SshDeleteOldProjDirRunner) AfterCallCmdDoing() {
+
+}
+
+func (s *SshDeleteOldProjDirRunner) IsFinishCondition(exitCode int) bool {
+	return exitCode == 0
+}
+
+func (s *SshDeleteOldProjDirRunner) SetEnvAndCommand(operationSystem util.OperationSystem) {
+	var mkdirCmd string
+	if s.MkdirPath != "" {
+		mkdirCmd = " && mkdir " + s.MkdirPath + "\""
+	} else {
+		mkdirCmd = "\""
+	}
+	cmdCommand := "\"rm -rf " + strings.Join(s.DeletePaths, " ") + mkdirCmd
+	s.AddCommand("ssh", s.UserName+"@"+s.HostnameOrIp, cmdCommand)
+}
+
+func sshAndDeleteOldData(hostName string, userName string, deletePaths []string, mkdirPath string) *SshDeleteOldProjDirRunner {
+	sshDeleteOldProjDirRunner := new(SshDeleteOldProjDirRunner)
+	sshDeleteOldProjDirRunner.HostnameOrIp = hostName
+	sshDeleteOldProjDirRunner.UserName = userName
+	sshDeleteOldProjDirRunner.DeletePaths = deletePaths
+	sshDeleteOldProjDirRunner.MkdirPath = mkdirPath
+	util.CallCmd(sshDeleteOldProjDirRunner)
+	return sshDeleteOldProjDirRunner
+}
+
+type ScpCopyProjRunner struct {
+	util.CmdModel
+	ProjPath    string
+	SshHostname string
+	SshUsername string
+	TargetPath  string
+}
+
+func (s *ScpCopyProjRunner) AfterCallCmdDoing() {
+}
+
+func (s *ScpCopyProjRunner) IsFinishCondition(exitCode int) bool {
+	return exitCode == 0
+}
+
+func (s *ScpCopyProjRunner) SetEnvAndCommand(operationSystem util.OperationSystem) {
+	s.AddCommand("scp", "-r", s.ProjPath, s.SshUsername+"@"+s.SshHostname+":"+s.TargetPath)
+}
+
+func scpAndCopyDataToShareFolder(hostName string, userName string, projPath string, targetPath string) *ScpCopyProjRunner {
+	scpCopyProjRunner := new(ScpCopyProjRunner)
+	scpCopyProjRunner.SshHostname = hostName
+	scpCopyProjRunner.SshUsername = userName
+	scpCopyProjRunner.ProjPath = projPath
+	scpCopyProjRunner.TargetPath = targetPath
+	util.CallCmd(scpCopyProjRunner)
+	return scpCopyProjRunner
+}
+
 func main() {
+
+	fmt.Println("開始")
 
 	workspaceDir, ok := getWorkspace()
 	if !ok {
 		return
 	}
 
-	ymlMap, ok := getYmlMap(workspaceDir)
+	mainYmlMap, ok := getMainYmlMap()
 	if !ok {
 		return
 	}
 
-	projRelativePath, ok := getProjRelativePath(ymlMap)
+	fmt.Println("mainYmlMap:", mainYmlMap)
+
+	projYmlMap, ok := getProjYmlMap(workspaceDir, "fortify.yml")
+	if !ok {
+		return
+	}
+	fmt.Println("projYmlMap:", projYmlMap)
+	combineTwoMap(mainYmlMap, projYmlMap)
+	fmt.Println("合併ymlMap:", mainYmlMap)
+
+	ymlInfo, ok := getYmlInfoByMapAndCheckIsFieldsOk(mainYmlMap, workspaceDir)
 	if !ok {
 		return
 	}
 
-	if !checkPathIsSafe(projRelativePath) {
+	if !deleteExcludePaths(ymlInfo.ProjPath, ymlInfo.ExcludeRegExps) {
 		return
 	}
 
-	excludeRegExps, ok := getExcludeRegExps(ymlMap)
-	if !ok {
+	sourceCodeDir := filepath.Join("/source_codes", ymlInfo.SshUsername, ymlInfo.ProjName)
+	reportDir := filepath.Join("/source_codes", ymlInfo.SshUsername, "Report", ymlInfo.ProjName)
+
+	fmt.Printf("ssh 刪除遠端 sourceCodeDir:%s reportDir:%s", sourceCodeDir, reportDir)
+	fmt.Println()
+
+	sshDeleteOldProjDirRunner := sshAndDeleteOldData(ymlInfo.SshHost, ymlInfo.SshUsername, []string{sourceCodeDir, reportDir}, sourceCodeDir)
+	if !sshDeleteOldProjDirRunner.IsSuccess {
+		fmt.Println("刪除失敗")
 		return
+	}
+
+	targetDir := filepath.Join("/source_codes", ymlInfo.SshUsername)
+	// scp 將專案放置到某地方
+	scpCopyProjRunner := scpAndCopyDataToShareFolder(ymlInfo.SshHost, ymlInfo.SshUsername, ymlInfo.ProjPath, targetDir)
+	if !scpCopyProjRunner.IsSuccess {
+		fmt.Println("複製成功")
+	}
+
+	fmt.Println("結束")
+}
+
+type YmlInfo struct {
+	ProjRelativePath string   "proj.relativePath"
+	ExcludeRegExps   []string "proj.excludeRegExps"
+	SshHost          string   "ssh.host"
+	SshUsername      string   "ssh.username"
+	ProjName         string
+	ProjPath         string
+}
+
+func getYmlInfoByMapAndCheckIsFieldsOk(ymlMap map[string]interface{}, workspaceDir string) (returnYmlInfo *YmlInfo, isSuccess bool) {
+	defer func() {
+		if recover() != nil {
+			returnYmlInfo = nil
+			isSuccess = false
+		}
+	}()
+
+	ymlInfo := new(YmlInfo)
+	infoRefValue := reflect.ValueOf(ymlInfo).Elem()
+	infoRefType := infoRefValue.Type()
+	for i := 0; i < infoRefValue.NumField(); i++ {
+		fieldRefType := infoRefType.Field(i)
+		// 抓ymlpath
+		ymlPath := string(fieldRefType.Tag)
+		if ymlPath != "" {
+			result := getMapValueByPath(ymlPath, ymlMap)
+			if result != nil {
+
+				resultRefValue := reflect.ValueOf(result)
+				fieldRefValue := infoRefValue.Field(i)
+
+				fieldType := fieldRefType.Type
+				resultRefType := resultRefValue.Type()
+
+				if fieldType.AssignableTo(resultRefType) {
+					fieldRefValue.Set(resultRefValue)
+				} else if fieldRefValue.Kind() == reflect.Slice && resultRefValue.Kind() == reflect.Slice {
+					for i := 0; i < resultRefValue.Len(); i++ {
+						resultElementRefValue := resultRefValue.Index(i)
+						if resultElementRefValue.IsValid() {
+							if !resultElementRefValue.IsNil() && (resultElementRefValue.Kind() == reflect.Interface || resultElementRefValue.Kind() == reflect.Ptr) {
+								resultElementRefValue = resultElementRefValue.Elem()
+							}
+							fieldRefValue.Set(reflect.Append(fieldRefValue, resultElementRefValue))
+						} else {
+							return nil, false
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if ymlInfo.ProjRelativePath == "" {
+		fmt.Println("yml須提供參數 proj.relativePath")
+		return nil, false
+	}
+	fmt.Println("參數 proj.relativePath:", ymlInfo.ProjRelativePath)
+	fmt.Println("參數 proj.excludeRegExps:", ymlInfo.ExcludeRegExps)
+
+	if !checkPathIsSafe(ymlInfo.ProjRelativePath) {
+		return nil, false
 	}
 
 	// proj目錄
-	projPath, ok := getProjPath(workspaceDir, projRelativePath)
+	projPath, ok := getProjPath(workspaceDir, ymlInfo.ProjRelativePath)
 	if !ok {
-		return
+		return nil, false
 	}
+	ymlInfo.ProjPath = projPath
 
-	if !deleteExcludePaths(projPath, excludeRegExps) {
-		return
+	// projName
+	ymlInfo.ProjName = filepath.Base(projPath)
+
+	if ymlInfo.SshHost == "" {
+		fmt.Println("參數 ssh.host 未提供")
+		return nil, false
 	}
+	fmt.Println("參數 ssh.host: ", ymlInfo.SshHost)
 
-	// ssh 刪除舊的資料
+	if ymlInfo.SshUsername == "" {
+		fmt.Println("參數 ssh.username 未提供")
+		return nil, false
+	}
+	fmt.Println("參數 ssh.username:", ymlInfo.SshUsername)
 
-	// scp 將專案放置到某地方
-
-	// call url use jwt token
-
+	return ymlInfo, true
 }

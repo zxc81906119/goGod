@@ -1,0 +1,6 @@
+proj:
+  relativePath: '.'
+  excludeRegExps:
+    - 'ntc-web'
+    - 'qwrqwrq'
+
