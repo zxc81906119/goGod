@@ -368,7 +368,6 @@ func main() {
 	if !sshDeleteOldProjDirRunner.IsSuccess {
 		fmt.Println("刪除失敗")
 		os.Exit(1)
-		return
 	}
 
 	targetDir := filepath.Join("/source_codes", ymlInfo.SshUsername)
@@ -380,7 +379,6 @@ func main() {
 	}
 
 	fmt.Println("結束")
-	os.Exit(0)
 }
 
 type YmlInfo struct {
