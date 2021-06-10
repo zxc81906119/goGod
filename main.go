@@ -278,13 +278,11 @@ func (s *SshDeleteOldProjDirRunner) IsFinishCondition(exitCode int) bool {
 }
 
 func (s *SshDeleteOldProjDirRunner) SetEnvAndCommand(operationSystem util.OperationSystem) {
-	var mkdirCmd string
+	cmdCommand := "\"rm -rf " + strings.Join(s.DeletePaths, " ")
 	if s.MkdirPath != "" {
-		mkdirCmd = " && mkdir " + s.MkdirPath + "\""
-	} else {
-		mkdirCmd = "\""
+		cmdCommand += " && mkdir " + s.MkdirPath
 	}
-	cmdCommand := "\"rm -rf " + strings.Join(s.DeletePaths, " ") + mkdirCmd
+	cmdCommand += "\""
 	s.AddCommand("ssh", s.UserName+"@"+s.HostnameOrIp, cmdCommand)
 }
 
