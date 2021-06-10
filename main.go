@@ -333,19 +333,19 @@ func main() {
 
 	workspaceDir, ok := getWorkspace()
 	if !ok {
-		return
+		os.Exit(1)
 	}
 
 	mainYmlMap, ok := getMainYmlMap()
 	if !ok {
-		return
+		os.Exit(1)
 	}
 
 	fmt.Println("mainYmlMap:", mainYmlMap)
 
 	projYmlMap, ok := getProjYmlMap(workspaceDir, "fortify.yml")
 	if !ok {
-		return
+		os.Exit(1)
 	}
 	fmt.Println("projYmlMap:", projYmlMap)
 	combineTwoMap(mainYmlMap, projYmlMap)
@@ -353,11 +353,11 @@ func main() {
 
 	ymlInfo, ok := getYmlInfoByMapAndCheckIsFieldsOk(mainYmlMap, workspaceDir)
 	if !ok {
-		return
+		os.Exit(1)
 	}
 
 	if !deleteExcludePaths(ymlInfo.ProjPath, ymlInfo.ExcludeRegExps) {
-		return
+		os.Exit(1)
 	}
 
 	sourceCodeDir := filepath.Join("/source_codes", ymlInfo.SshUsername, ymlInfo.ProjName)
@@ -369,6 +369,7 @@ func main() {
 	sshDeleteOldProjDirRunner := sshAndDeleteOldData(ymlInfo.SshHost, ymlInfo.SshUsername, []string{sourceCodeDir, reportDir}, sourceCodeDir)
 	if !sshDeleteOldProjDirRunner.IsSuccess {
 		fmt.Println("刪除失敗")
+		os.Exit(1)
 		return
 	}
 
@@ -376,10 +377,12 @@ func main() {
 	// scp 將專案放置到某地方
 	scpCopyProjRunner := scpAndCopyDataToShareFolder(ymlInfo.SshHost, ymlInfo.SshUsername, ymlInfo.ProjPath, targetDir)
 	if !scpCopyProjRunner.IsSuccess {
-		fmt.Println("複製成功")
+		fmt.Println("複製失敗")
+		os.Exit(1)
 	}
 
 	fmt.Println("結束")
+	os.Exit(0)
 }
 
 type YmlInfo struct {
