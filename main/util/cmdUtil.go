@@ -18,24 +18,24 @@ const (
 )
 
 var (
-	OPERRATION_SYSTEM          OperationSystem
-	CALL_CMD_FINISH_CLOSE_FLAG string
-	EXECUTION_FILE_NAME        string
-	SET_ENV_SYXTAX             string
+	OS                     OperationSystem
+	CallCmdFinishCloseFlag string
+	ExecutionFileName      string
+	SetEnvSyntax           string
 )
 
 func init() {
 	osString := runtime.GOOS
 	if strings.Contains(osString, "window") {
-		OPERRATION_SYSTEM = Windows
-		EXECUTION_FILE_NAME = "cmd"
-		CALL_CMD_FINISH_CLOSE_FLAG = "/C"
-		SET_ENV_SYXTAX = "set "
+		OS = Windows
+		ExecutionFileName = "cmd"
+		CallCmdFinishCloseFlag = "/C"
+		SetEnvSyntax = "set "
 	} else {
-		OPERRATION_SYSTEM = Linux
-		EXECUTION_FILE_NAME = "sh"
-		CALL_CMD_FINISH_CLOSE_FLAG = "-c"
-		SET_ENV_SYXTAX = "export "
+		OS = Linux
+		ExecutionFileName = "sh"
+		CallCmdFinishCloseFlag = "-c"
+		SetEnvSyntax = "export "
 	}
 }
 
@@ -96,12 +96,12 @@ func (cmdModel *CmdModel) PutEnvMap(key, value string) {
 	}
 }
 
-func (cmdModel *CmdModel) AddCommand(cmds ...string) {
-	if cmds != nil && len(cmds) != 0 {
+func (cmdModel *CmdModel) AddCommand(cmd ...string) {
+	if cmd != nil && len(cmd) != 0 {
 		if cmdModel.CommandList == nil {
 			cmdModel.CommandList = [][]string{}
 		}
-		cmdModel.CommandList = append(cmdModel.CommandList, cmds)
+		cmdModel.CommandList = append(cmdModel.CommandList, cmd)
 	}
 }
 
@@ -128,14 +128,14 @@ func CallCmd(cmdModel CmdModelInterface) CmdModelInterface {
 			fmt.Println("err:", err)
 		}
 	}()
-	cmdModel.SetEnvAndCommand(OPERRATION_SYSTEM)
+	cmdModel.SetEnvAndCommand(OS)
 	cmdModel.SetIsSuccess(false)
 	for i := 0; i <= cmdModel.GetRetryTimes(); i++ {
 		fmt.Printf("[CallCmd] call command 第%v次", i+1)
 		fmt.Println()
 		fullCommand := produceCommand(cmdModel.GetEnvMap(), cmdModel.GetCommandList())
 		fmt.Println("[CallCmd] command:", fullCommand)
-		cmd := exec.Command(EXECUTION_FILE_NAME, CALL_CMD_FINISH_CLOSE_FLAG, fullCommand)
+		cmd := exec.Command(ExecutionFileName, CallCmdFinishCloseFlag, fullCommand)
 		executePath := cmdModel.GetExecutePath()
 		if executePath != "" {
 			cmd.Dir = executePath
@@ -179,7 +179,7 @@ func getCmdExitCode(cmdErr error) int {
 	} else if exitError, ok := cmdErr.(*exec.ExitError); ok {
 		return exitError.ExitCode()
 	}
-	panic(errors.New("unknowExitCode"))
+	panic(errors.New("unknownExitCode"))
 }
 
 func produceCommand(envMap map[string]string, cmdList [][]string) string {
@@ -192,7 +192,7 @@ func produceCommand(envMap map[string]string, cmdList [][]string) string {
 			} else {
 				command += "&&"
 			}
-			command += SET_ENV_SYXTAX + key + "=" + value
+			command += SetEnvSyntax + key + "=" + value
 		}
 	}
 
