@@ -15,18 +15,18 @@ import (
 )
 
 const (
-	WORKSPACE     = "WORKSPACE"
-	MAIN_YML_PATH = "MAIN_YML_PATH"
+	WORKSPACE   = "WORKSPACE"
+	MainYmlPath = "MAIN_YML_PATH"
 )
 
 func isDir(path string) bool {
-	fileInfo, error := os.Stat(path)
-	return error == nil && fileInfo.IsDir()
+	fileInfo, err := os.Stat(path)
+	return err == nil && fileInfo.IsDir()
 }
 
 func isFile(path string) bool {
-	fileInfo, error := os.Stat(path)
-	return error == nil && !fileInfo.IsDir()
+	fileInfo, err := os.Stat(path)
+	return err == nil && !fileInfo.IsDir()
 }
 
 func readYmlToMap(ymlPath string) (map[string]interface{}, error) {
@@ -80,8 +80,8 @@ func getNextObj(lastObj interface{}, element string) interface{} {
 			}
 			break
 		case reflect.Slice:
-			elementIndex, error := strconv.Atoi(element)
-			if error == nil && reflectValue.Len() > elementIndex {
+			elementIndex, err := strconv.Atoi(element)
+			if err == nil && reflectValue.Len() > elementIndex {
 				return reflectValue.Index(elementIndex).Interface()
 			}
 			break
@@ -110,7 +110,7 @@ func getMapValueByPath(mapPath string, someMap interface{}) interface{} {
 func deleteExcludePaths(somePath string, excludeRegExps []string) bool {
 	if len(excludeRegExps) != 0 {
 
-		error := filepath.Walk(somePath, func(path string, info fs.FileInfo, err error) error {
+		err := filepath.Walk(somePath, func(path string, info fs.FileInfo, err error) error {
 			if err == nil {
 				positiveProjPath := filepath.ToSlash(path)
 				for _, regExp := range excludeRegExps {
@@ -139,8 +139,8 @@ func deleteExcludePaths(somePath string, excludeRegExps []string) bool {
 			return err
 		})
 
-		if error != nil {
-			fmt.Printf("排除檔案發生錯誤: %v", error)
+		if err != nil {
+			fmt.Printf("排除檔案發生錯誤: %v", err)
 			return false
 		}
 
@@ -183,7 +183,7 @@ func getProjYmlMap(someDir string, ymlName string) (map[string]interface{}, bool
 }
 
 func getMainYmlMap() (map[string]interface{}, bool) {
-	mainYmlPath := os.Getenv(MAIN_YML_PATH)
+	mainYmlPath := os.Getenv(MainYmlPath)
 	if mainYmlPath == "" {
 		fmt.Println("必須提供環境變數: MAIN_YML_PATH")
 		return nil, false
@@ -277,7 +277,7 @@ func (s *SshDeleteOldProjDirRunner) IsFinishCondition(exitCode int) bool {
 	return exitCode == 0
 }
 
-func (s *SshDeleteOldProjDirRunner) SetEnvAndCommand(operationSystem util.OperationSystem) {
+func (s *SshDeleteOldProjDirRunner) SetEnvAndCommand(util.OperationSystem) {
 	cmdCommand := "\"rm -rf " + strings.Join(s.DeletePaths, " ")
 	if s.MkdirPath != "" {
 		cmdCommand += " && mkdir " + s.MkdirPath
@@ -311,7 +311,7 @@ func (s *ScpCopyProjRunner) IsFinishCondition(exitCode int) bool {
 	return exitCode == 0
 }
 
-func (s *ScpCopyProjRunner) SetEnvAndCommand(operationSystem util.OperationSystem) {
+func (s *ScpCopyProjRunner) SetEnvAndCommand(util.OperationSystem) {
 	s.AddCommand("scp", "-r", s.ProjPath, s.SshUsername+"@"+s.SshHostname+":"+s.TargetPath)
 }
 
